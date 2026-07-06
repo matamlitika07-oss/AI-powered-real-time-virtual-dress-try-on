@@ -1,0 +1,1 @@
+- [MediaPipe dual-model OOM](mediapipe-dual-model-oom.md) — running two MediaPipe WASM models simultaneously exhausts the Replit preview iframe's memory; use landmark-based fallbacks instead.
