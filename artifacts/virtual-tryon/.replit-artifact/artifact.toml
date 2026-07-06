@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Virtual Try-On"
+version = "1.0.0"
+id = "artifacts/virtual-tryon"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20695
+
+[services.development]
+run = "pnpm --filter @workspace/virtual-tryon run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/virtual-tryon", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/virtual-tryon/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20695"
+BASE_PATH = "/"

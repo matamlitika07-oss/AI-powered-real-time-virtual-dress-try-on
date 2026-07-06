@@ -1,0 +1,130 @@
+I am starting a new project from scratch in Replit.
+
+I want to build a real-time virtual try-on web app by integrating and improving this GitHub repository:
+
+https://github.com/Yashikashrivastava30/Virtual-Try-On-Model
+
+Project goal:
+Create a live webcam-based virtual try-on app where the user can select clothing and see it overlaid on their body in real time.
+
+Important:
+This project must be live, not photo-upload based.
+Do not integrate VITON-HD or any slow AI generation model.
+Use the real-time webcam + pose detection + transparent garment overlay approach from this repository.
+
+Tech stack:
+
+* Python Flask backend
+* OpenCV
+* MediaPipe Pose
+* Pillow
+* NumPy
+* HTML, CSS, JavaScript frontend
+* Webcam access using getUserMedia()
+
+Build the full project with this structure:
+
+app.py
+templates/index.html
+static/style.css
+static/script.js
+static/clothes/
+requirements.txt
+README.md
+
+Requirements:
+
+1. Webcam UI
+
+* Show live webcam feed.
+* Use browser getUserMedia().
+* Prefer rear camera on mobile.
+* Make the UI mobile responsive.
+
+2. Clothing catalog
+
+* Show garment PNGs from static/clothes/.
+* User can select one clothing item.
+* Selected clothing should be highlighted.
+
+3. Real-time overlay
+
+* Detect body using MediaPipe Pose.
+* Use these landmarks:
+  LEFT_SHOULDER 11
+  RIGHT_SHOULDER 12
+  LEFT_HIP 23
+  RIGHT_HIP 24
+  LEFT_ELBOW 13
+  RIGHT_ELBOW 14
+  LEFT_WRIST 15
+  RIGHT_WRIST 16
+
+4. Garment placement
+
+* Crop transparent borders from garment PNG using PIL getbbox().
+* Place garment based on shoulder midpoint and hip midpoint.
+* Garment should start slightly above shoulders.
+* Width should be based on shoulder width.
+* Height should extend from shoulders to below hips.
+* Prevent garment from becoming too large when user moves close to camera.
+* If shoulders or hips are not visible, hide garment and show:
+  “Move back for full body view”
+
+5. Realism improvements
+
+* Use landmark smoothing with last 5 frames.
+* Reduce jitter.
+* Use cv2.warpPerspective() so clothing follows body angle.
+* Blur alpha channel using GaussianBlur.
+* Use soft alpha blending instead of hard paste.
+* Add light shadow below the garment.
+* Add arm mask so arms appear in front of clothing.
+* Keep overlay natural, not like a sticker.
+
+6. Controls
+
+* Add opacity slider, default 75%.
+* Add “Capture Look” button to download current try-on frame.
+* Add FPS counter.
+* Add pose status text.
+
+7. Backend/frontend communication
+
+* Keep it simple and stable.
+* Either process frames directly in Flask route or use live frontend loop.
+* If using Socket.IO, make sure frontend and backend versions match.
+* Do not overcomplicate with heavy models.
+
+8. Error handling
+
+* If webcam permission is denied, show a clear message.
+* If no clothing is selected, show a warning.
+* If pose is not detected, show:
+  “Stand back so we can see your full body”
+
+9. Design
+
+* Dark fashion-app UI.
+* Gold accents.
+* Left side: webcam/try-on preview.
+* Right side: clothing catalog and controls.
+
+10. Deliverables
+    Generate complete working code for all files:
+
+* app.py
+* templates/index.html
+* static/style.css
+* static/script.js
+* requirements.txt
+* README.md
+
+Also explain:
+
+* How to run the project in Replit
+* Where to upload garment PNG files
+* What image format works best
+* How to improve overlay quality later
+
+Do not only give explanation. Create the full working project code.
