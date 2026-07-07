@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">
+  <g stroke="#7a4a20" stroke-linecap="round" fill="none">
+    <!-- Left arm -->
+    <line x1="0" y1="42" x2="20" y2="42" stroke-width="4"/>
+    <!-- Left lens -->
+    <circle cx="72" cy="50" r="50" stroke-width="5" fill="rgba(160,100,40,0.1)"/>
+    <!-- Bridge -->
+    <path d="M122 40 Q150 34 178 40" stroke-width="4"/>
+    <!-- Right lens -->
+    <circle cx="228" cy="50" r="50" stroke-width="5" fill="rgba(160,100,40,0.1)"/>
+    <!-- Right arm -->
+    <line x1="278" y1="42" x2="300" y2="42" stroke-width="4"/>
+  </g>
+</svg>

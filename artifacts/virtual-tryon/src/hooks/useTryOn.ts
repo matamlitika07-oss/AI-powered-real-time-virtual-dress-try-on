@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Pose, Results as PoseResults, NormalizedLandmarkList } from '@mediapipe/pose';
+import { Pose, Results as PoseResults } from '@mediapipe/pose';
 
 // ── Landmark indices ──────────────────────────────────────────────────────────
 const IDX_LEFT_SHOULDER  = 11;
@@ -29,10 +29,12 @@ const IDX_LEFT_WRIST     = 15;
 const IDX_RIGHT_WRIST    = 16;
 const IDX_LEFT_HIP       = 23;
 const IDX_RIGHT_HIP      = 24;
+const IDX_LEFT_EYE       = 2;   // Ali-Kalsekar: mp_pose.PoseLandmark.LEFT_EYE
+const IDX_RIGHT_EYE      = 5;   // Ali-Kalsekar: mp_pose.PoseLandmark.RIGHT_EYE
 
 // ── Tuning ────────────────────────────────────────────────────────────────────
 const VIS_THRESHOLD     = 0.6;  // spec: hide if shoulder/hip vis < 0.6
-const HISTORY_SIZE      = 5;    // spec: smooth over last 5 frames
+const EMA_ALPHA         = 0.65; // EMA from Ali-Kalsekar smooth_factor≈0.7; tuned for browser
 const WARP_N            = 10;   // NxN sub-quad divisions (10 = visually perfect for torso)
 const ARM_HW_RATIO      = 0.12; // arm polygon half-width as fraction of shoulder span
 const MAX_TORSO_H       = 0.88; // hide garment if torso height > this fraction of canvas H
@@ -215,6 +217,50 @@ function paintArmMask(
   ctx.restore();
 }
 
+// ── Scale quad ────────────────────────────────────────────────────────────────
+// Expand / shrink each corner of the torso quad from its centroid.
+// scale > 1 = bigger garment, scale < 1 = smaller.  Ali-Kalsekar's +/- keys.
+function scaleQuad(q: TorsoQuad, factor: number): TorsoQuad {
+  if (factor === 1) return q;
+  const cx = (q.tl.x + q.tr.x + q.bl.x + q.br.x) / 4;
+  const cy = (q.tl.y + q.tr.y + q.bl.y + q.br.y) / 4;
+  const s = (p: Pt): Pt => ({ x: cx + (p.x - cx) * factor, y: cy + (p.y - cy) * factor });
+  return { tl: s(q.tl), tr: s(q.tr), bl: s(q.bl), br: s(q.br) };
+}
+
+// ── Glasses overlay ───────────────────────────────────────────────────────────
+// Ported from Ali-Kalsekar ClothingOverlay._overlay_glasses():
+//   target_w  = eye_distance * 2.2 * scale_factor
+//   top_left  = center - (w/2, h*0.45)
+//   rotation  = atan2(right_eye - left_eye)
+// Browser version: rotate the canvas context rather than warpAffine.
+function renderGlasses(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  leftEye: Pt,
+  rightEye: Pt,
+  scale: number,
+): void {
+  const iw = img.naturalWidth  || (img as HTMLImageElement).width  || 300;
+  const ih = img.naturalHeight || (img as HTMLImageElement).height || 80;
+  if (!iw || !ih) return;
+
+  const eyeSpan  = Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y);
+  const targetW  = Math.max(40, eyeSpan * 2.2 * scale);
+  const targetH  = targetW * (ih / iw);
+  const cx       = (leftEye.x + rightEye.x) / 2;
+  const cy       = (leftEye.y + rightEye.y) / 2;
+  const angle    = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.globalAlpha = 0.92;
+  ctx.drawImage(img, -targetW / 2, -targetH * 0.45, targetW, targetH); // Ali-Kalsekar anchor
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 export function useTryOn() {
   const videoRef  = useRef<HTMLVideoElement>(null);
@@ -226,31 +272,38 @@ export function useTryOn() {
   const garmentOCRef = useRef<OffscreenCanvas | null>(null);
 
   // ── State ─────────────────────────────────────────────────────────────────
-  const [selectedGarment, setSelectedGarment]   = useState<string | null>(null);
-  const [opacity,         setOpacity]           = useState<number>(75);
-  const [poseStatus,      setPoseStatus]        = useState<string>('Initializing…');
-  const [fps,             setFps]               = useState<number>(0);
-  const [webcamError,     setWebcamError]       = useState<string | null>(null);
+  const [selectedGarment,  setSelectedGarment]  = useState<string | null>(null);
+  const [garmentCategory,  setGarmentCategory]  = useState<'torso' | 'glasses' | null>(null);
+  const [opacity,          setOpacity]          = useState<number>(75);
+  const [scaleFactor,      setScaleFactor]      = useState<number>(1.0);
+  const [poseStatus,       setPoseStatus]       = useState<string>('Initializing…');
+  const [fps,              setFps]              = useState<number>(0);
+  const [webcamError,      setWebcamError]      = useState<string | null>(null);
   // Debug toggles
   const [showTorsoPoints,  setShowTorsoPoints]  = useState<boolean>(false);
   const [showTorsoPolygon, setShowTorsoPolygon] = useState<boolean>(false);
   const [showWarpBox,      setShowWarpBox]      = useState<boolean>(false);
 
   // ── Refs (stale-closure-safe values for onResults callback) ───────────────
-  const garmentImgRef      = useRef<HTMLImageElement | null>(null);
-  const cropBoundsRef      = useRef<CropBounds | null>(null);
-  const landmarkHistoryRef = useRef<NormalizedLandmarkList[]>([]);
-  const lastFrameTimeRef   = useRef<number>(Date.now());
-  const fpsHistoryRef      = useRef<number[]>([]);
-  const opacityRef         = useRef<number>(75);
-  const showPointsRef      = useRef<boolean>(false);
-  const showPolygonRef     = useRef<boolean>(false);
-  const showWarpBoxRef     = useRef<boolean>(false);
+  const garmentImgRef       = useRef<HTMLImageElement | null>(null);
+  const cropBoundsRef       = useRef<CropBounds | null>(null);
+  // EMA state — replaces rolling-average history buffer (Ali-Kalsekar approach)
+  const emaLandmarksRef     = useRef<Array<{ x: number; y: number; visibility: number }>>([]);
+  const lastFrameTimeRef    = useRef<number>(Date.now());
+  const fpsHistoryRef       = useRef<number[]>([]);
+  const opacityRef          = useRef<number>(75);
+  const scaleFactorRef      = useRef<number>(1.0);
+  const garmentCategoryRef  = useRef<'torso' | 'glasses' | null>(null);
+  const showPointsRef       = useRef<boolean>(false);
+  const showPolygonRef      = useRef<boolean>(false);
+  const showWarpBoxRef      = useRef<boolean>(false);
 
-  useEffect(() => { opacityRef.current     = opacity;          }, [opacity]);
-  useEffect(() => { showPointsRef.current  = showTorsoPoints;  }, [showTorsoPoints]);
-  useEffect(() => { showPolygonRef.current = showTorsoPolygon; }, [showTorsoPolygon]);
-  useEffect(() => { showWarpBoxRef.current = showWarpBox;      }, [showWarpBox]);
+  useEffect(() => { opacityRef.current         = opacity;          }, [opacity]);
+  useEffect(() => { scaleFactorRef.current     = scaleFactor;      }, [scaleFactor]);
+  useEffect(() => { garmentCategoryRef.current = garmentCategory;  }, [garmentCategory]);
+  useEffect(() => { showPointsRef.current      = showTorsoPoints;  }, [showTorsoPoints]);
+  useEffect(() => { showPolygonRef.current     = showTorsoPolygon; }, [showTorsoPolygon]);
+  useEffect(() => { showWarpBoxRef.current     = showWarpBox;      }, [showWarpBox]);
 
   // ── Garment load: decode PNG + compute crop bounds once ───────────────────
   useEffect(() => {
@@ -296,26 +349,55 @@ export function useTryOn() {
       return;
     }
 
-    // ── 2. Landmark smoothing: 5-frame rolling average ────────────────────
-    landmarkHistoryRef.current.push(lms);
-    if (landmarkHistoryRef.current.length > HISTORY_SIZE) landmarkHistoryRef.current.shift();
-    const smoothed = lms.map((_, i) => {
-      let x = 0, y = 0, v = 0;
-      for (const f of landmarkHistoryRef.current) { x += f[i].x; y += f[i].y; v += f[i].visibility ?? 0; }
-      const n = landmarkHistoryRef.current.length;
-      return { x: x / n, y: y / n, visibility: v / n };
-    });
+    // ── 2. Landmark smoothing: EMA (exponential moving average) ──────────
+    // Ported from Ali-Kalsekar PoseDetector._smooth():
+    //   smoothed = α * prev + (1−α) * current
+    // α=0.65 is more responsive than their 0.7 while keeping jitter-free.
+    const ema = emaLandmarksRef.current;
+    if (ema.length !== lms.length) {
+      // First frame — seed with raw values
+      emaLandmarksRef.current = lms.map(lm => ({
+        x: lm.x, y: lm.y, visibility: lm.visibility ?? 0,
+      }));
+    } else {
+      for (let i = 0; i < lms.length; i++) {
+        ema[i].x          = EMA_ALPHA * ema[i].x          + (1 - EMA_ALPHA) * lms[i].x;
+        ema[i].y          = EMA_ALPHA * ema[i].y          + (1 - EMA_ALPHA) * lms[i].y;
+        ema[i].visibility = EMA_ALPHA * ema[i].visibility + (1 - EMA_ALPHA) * (lms[i].visibility ?? 0);
+      }
+    }
+    const smoothed = emaLandmarksRef.current;
 
+    const garment  = garmentImgRef.current;
+    const category = garmentCategoryRef.current;
+
+    // ── 3. Branch on category — glasses needs ONLY eye landmarks ─────────
+    // Ported from Ali-Kalsekar: glasses use eye-level algorithm, completely
+    // independent of torso visibility.  Return early so torso guards don't
+    // block eyewear when shoulders/hips aren't fully in frame.
+    if (category === 'glasses') {
+      const eyeL = smoothed[IDX_LEFT_EYE];
+      const eyeR = smoothed[IDX_RIGHT_EYE];
+      if (garment && isVis(eyeL) && isVis(eyeR)) {
+        renderGlasses(ctx, garment, lmToPx(eyeL, W, H), lmToPx(eyeR, W, H), scaleFactorRef.current);
+        setPoseStatus('Tracking ✓');
+      } else {
+        setPoseStatus(garment ? 'Look straight at the camera' : 'Select eyewear →');
+      }
+      // Debug overlays skipped in glasses mode (no torso polygon to show)
+      return;
+    }
+
+    // ── 4. Torso path — require shoulder + hip visibility ─────────────────
     const ls = smoothed[IDX_LEFT_SHOULDER];
     const rs = smoothed[IDX_RIGHT_SHOULDER];
     const lh = smoothed[IDX_LEFT_HIP];
     const rh = smoothed[IDX_RIGHT_HIP];
-    const le = smoothed[IDX_LEFT_ELBOW];
-    const re = smoothed[IDX_RIGHT_ELBOW];
-    const lw = smoothed[IDX_LEFT_WRIST];
-    const rw = smoothed[IDX_RIGHT_WRIST];
+    const elL = smoothed[IDX_LEFT_ELBOW];   // renamed: avoid shadowing eye vars
+    const elR = smoothed[IDX_RIGHT_ELBOW];
+    const wrL = smoothed[IDX_LEFT_WRIST];
+    const wrR = smoothed[IDX_RIGHT_WRIST];
 
-    // ── 3. Visibility check — spec: threshold = 0.6 ───────────────────────
     if (!isVis(ls) || !isVis(rs) || !isVis(lh) || !isVis(rh)) {
       setPoseStatus('Move back for full body view');
       return;
@@ -329,16 +411,15 @@ export function useTryOn() {
     const bl = lmToPx(lh, W, H); // BL = left hip
     const br = lmToPx(rh, W, H); // BR = right hip
 
-    const dst: TorsoQuad = { tl, tr, bl, br };
+    // Apply user scale factor (Ali-Kalsekar +/- keys → slider)
+    const dst = scaleQuad({ tl, tr, bl, br }, scaleFactorRef.current);
 
-    // ── 4. Size guard — prevent garment becoming huge when user is close ───
+    // ── 5. Size guard — prevent garment becoming huge when user is close ───
     const torsoH = Math.max(bl.y, br.y) - Math.min(tl.y, tr.y);
     const tooClose = torsoH > H * MAX_TORSO_H;
 
-    // ── 5. Garment rendering (Phase 2 + 3) ────────────────────────────────
-    const garment = garmentImgRef.current;
-    const crop    = cropBoundsRef.current;
-
+    // ── 6. Torso overlay (perspective warp, Phase 2 + 3) ──────────────────
+    const crop = cropBoundsRef.current;
     if (garment && crop && !tooClose) {
       // Ensure OffscreenCanvas is allocated and sized correctly
       if (!garmentOCRef.current ||
@@ -352,21 +433,18 @@ export function useTryOn() {
       // Render perspective-warped garment into the OffscreenCanvas.
       // Source:  TL=(sx,sy) TR=(sx+sw,sy) BL=(sx,sy+sh) BR=(sx+sw,sy+sh)
       // Dest:    TL=leftShoulder  TR=rightShoulder  BL=leftHip  BR=rightHip
-      // Garment is drawn upright — top maps to shoulders, bottom maps to hips.
       gCtx.clearRect(0, 0, W, H);
       renderWarpedGarment(gCtx, garment, crop, dst);
 
-      // 5a. Drop shadow: blurred + offset dark version of the warped garment.
-      //     Drawn first so it appears behind the garment.
+      // 6a. Drop shadow
       ctx.save();
       ctx.globalAlpha = 0.28;
       ctx.filter      = 'blur(10px)';
-      ctx.drawImage(gOC, 5, 8);   // slight down-right offset
+      ctx.drawImage(gOC, 5, 8);
       ctx.filter      = 'none';
       ctx.restore();
 
-      // 5b. Edge halo: blurred soft-border pass (GaussianBlur kernel 11 equiv).
-      //     Approximates blurring the alpha channel for feathered edges.
+      // 6b. Edge halo (GaussianBlur kernel 11 equiv — soft alpha feather)
       ctx.save();
       ctx.globalAlpha = 0.42 * (opacityRef.current / 100);
       ctx.filter      = 'blur(5px)';
@@ -374,27 +452,24 @@ export function useTryOn() {
       ctx.filter      = 'none';
       ctx.restore();
 
-      // 5c. Crisp garment at full slider opacity.
+      // 6c. Crisp garment at full slider opacity
       ctx.save();
       ctx.globalAlpha = opacityRef.current / 100;
       ctx.drawImage(gOC, 0, 0);
       ctx.restore();
 
-      // ── 6. Arm masking: draw video pixels over garment in arm regions ────
-      // Gives the appearance that the person's arms are in front of the garment.
-      // Equivalent to cv2.fillPoly arm mask + addWeighted composite.
+      // ── 7. Arm masking ────────────────────────────────────────────────
       const shoulderSpan = Math.hypot(tr.x - tl.x, tr.y - tl.y);
       const armHW = shoulderSpan * ARM_HW_RATIO;
-
-      if (isVis(le) && isVis(lw)) {
-        paintArmMask(ctx, results.image, tl, lmToPx(le, W, H), lmToPx(lw, W, H), armHW, W, H);
+      if (isVis(elL) && isVis(wrL)) {
+        paintArmMask(ctx, results.image, tl, lmToPx(elL, W, H), lmToPx(wrL, W, H), armHW, W, H);
       }
-      if (isVis(re) && isVis(rw)) {
-        paintArmMask(ctx, results.image, tr, lmToPx(re, W, H), lmToPx(rw, W, H), armHW, W, H);
+      if (isVis(elR) && isVis(wrR)) {
+        paintArmMask(ctx, results.image, tr, lmToPx(elR, W, H), lmToPx(wrR, W, H), armHW, W, H);
       }
     }
 
-    // Status
+    // ── Single authoritative status decision per frame ────────────────────
     if (tooClose) {
       setPoseStatus('Step back — too close to camera');
     } else {
@@ -529,7 +604,9 @@ export function useTryOn() {
   return {
     videoRef, canvasRef,
     selectedGarment, setSelectedGarment,
+    garmentCategory,  setGarmentCategory,
     opacity, setOpacity,
+    scaleFactor, setScaleFactor,
     poseStatus, fps, webcamError,
     captureLook,
     showTorsoPoints,  setShowTorsoPoints,

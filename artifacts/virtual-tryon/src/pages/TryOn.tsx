@@ -1,67 +1,125 @@
 import { useState } from 'react';
-import { Camera, Check, Settings, CameraOff, Bug } from 'lucide-react';
+import { Camera, Check, Settings, CameraOff, Bug, Glasses } from 'lucide-react';
 import { useTryOn } from '@/hooks/useTryOn';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-const GARMENTS = [
-  { id: 'shirt', name: 'White Button-Down', src: '/clothes/shirt.png' },
-  { id: 'blazer', name: 'Navy Blazer', src: '/clothes/blazer.png' },
-  { id: 'hoodie', name: 'Grey Hoodie', src: '/clothes/hoodie.png' },
-  { id: 'striped', name: 'Striped Long Sleeve', src: '/clothes/striped.png' },
-  { id: 'tshirt', name: 'Black T-Shirt', src: '/clothes/tshirt.png' },
-  { id: 'jacket', name: 'Brown Leather Jacket', src: '/clothes/jacket.png' }
+// ── Catalog ────────────────────────────────────────────────────────────────────
+const TOPS: { id: string; name: string; src: string; category: 'torso' }[] = [
+  { id: 'shirt',   name: 'White Button-Down',    src: '/clothes/shirt.png',   category: 'torso' },
+  { id: 'blazer',  name: 'Navy Blazer',           src: '/clothes/blazer.png',  category: 'torso' },
+  { id: 'hoodie',  name: 'Grey Hoodie',           src: '/clothes/hoodie.png',  category: 'torso' },
+  { id: 'striped', name: 'Striped Long Sleeve',   src: '/clothes/striped.png', category: 'torso' },
+  { id: 'tshirt',  name: 'Black T-Shirt',         src: '/clothes/tshirt.png',  category: 'torso' },
+  { id: 'jacket',  name: 'Brown Leather Jacket',  src: '/clothes/jacket.png',  category: 'torso' },
 ];
 
+// Eyewear — Ali-Kalsekar eye-landmark overlay algorithm
+const EYEWEAR: { id: string; name: string; src: string; category: 'glasses' }[] = [
+  { id: 'glasses-classic', name: 'Wire Frames',  src: '/clothes/glasses-classic.svg', category: 'glasses' },
+  { id: 'glasses-round',   name: 'Round Frames', src: '/clothes/glasses-round.svg',   category: 'glasses' },
+  { id: 'sunglasses',      name: 'Sunglasses',   src: '/clothes/sunglasses.svg',       category: 'glasses' },
+];
+
+// ── Garment card (defined outside TryOn to keep stable reference) ──────────────
+type AnyGarment = (typeof TOPS)[number] | (typeof EYEWEAR)[number];
+
+function GarmentCard({
+  garment,
+  isSelected,
+  onSelect,
+}: {
+  garment: AnyGarment;
+  isSelected: boolean;
+  onSelect: (garment: AnyGarment) => void;
+}) {
+  return (
+    <button
+      onClick={() => onSelect(garment)}
+      className={cn(
+        'group relative flex flex-col text-left transition-all duration-300 outline-none rounded-md overflow-hidden bg-card border-2',
+        isSelected
+          ? 'border-primary shadow-[0_0_20px_rgba(212,175,55,0.15)] scale-[1.02]'
+          : 'border-transparent hover:border-border',
+      )}
+    >
+      <div
+        className={cn(
+          'w-full relative flex items-center justify-center overflow-hidden',
+          garment.category === 'glasses' ? 'aspect-[3/1] p-3' : 'aspect-[4/5] p-4 bg-black/50',
+        )}
+      >
+        {isSelected && (
+          <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg">
+            <Check className="w-4 h-4 text-primary-foreground" />
+          </div>
+        )}
+        {garment.category !== 'glasses' && (
+          <div className="absolute inset-0 bg-gradient-to-tr from-black/80 via-transparent to-white/5 opacity-50" />
+        )}
+        <img
+          src={garment.src}
+          alt={garment.name}
+          className={cn(
+            'w-full h-full relative z-0 transition-transform duration-500 object-contain',
+            isSelected ? 'scale-110' : 'group-hover:scale-110',
+          )}
+          crossOrigin="anonymous"
+        />
+      </div>
+      <div className="p-3 border-t border-border/50 bg-card/80 backdrop-blur-sm">
+        <p className="text-[10px] font-medium tracking-widest text-white truncate w-full">
+          {garment.name}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
 export default function TryOn() {
   const { toast } = useToast();
   const [debugOpen, setDebugOpen] = useState(false);
+
   const {
-    videoRef,
-    canvasRef,
-    selectedGarment,
-    setSelectedGarment,
-    opacity,
-    setOpacity,
-    poseStatus,
-    fps,
-    webcamError,
+    videoRef, canvasRef,
+    selectedGarment, setSelectedGarment,
+    garmentCategory,  setGarmentCategory,
+    opacity,          setOpacity,
+    scaleFactor,      setScaleFactor,
+    poseStatus, fps, webcamError,
     captureLook,
     showTorsoPoints,  setShowTorsoPoints,
     showTorsoPolygon, setShowTorsoPolygon,
     showWarpBox,      setShowWarpBox,
   } = useTryOn();
 
+  const handleSelect = (garment: AnyGarment) => {
+    setSelectedGarment(garment.src);
+    setGarmentCategory(garment.category);
+  };
+
   const handleCapture = () => {
     if (!selectedGarment) {
       toast({
-        title: "No garment selected",
-        description: "Please select a garment from the catalog before capturing your look.",
-        variant: "destructive"
+        title: 'No garment selected',
+        description: 'Please select a garment from the catalog before capturing your look.',
+        variant: 'destructive',
       });
       return;
     }
     captureLook();
-    toast({
-      title: "Look Captured",
-      description: "Your virtual try-on look has been saved.",
-    });
+    toast({ title: 'Look Captured', description: 'Your virtual try-on look has been saved.' });
   };
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-background text-foreground uppercase tracking-widest font-sans">
-      {/* LEFT SIDE - TRY-ON PREVIEW (60%) */}
+      {/* ── LEFT — webcam canvas (60%) ─────────────────────────────────────── */}
       <div className="relative w-full lg:w-[60%] flex-none h-[60vh] lg:h-screen bg-black overflow-hidden flex items-center justify-center border-b lg:border-b-0 lg:border-r border-border">
-        {/* Hidden Video Feed */}
-        <video 
-          ref={videoRef} 
-          className="hidden" 
-          playsInline 
-          muted 
-        />
-        
+        <video ref={videoRef} className="hidden" playsInline muted />
+
         {webcamError ? (
           <div className="flex flex-col items-center justify-center space-y-4 text-center p-6 text-muted-foreground">
             <CameraOff className="w-12 h-12 mb-2 opacity-50" />
@@ -69,27 +127,31 @@ export default function TryOn() {
           </div>
         ) : (
           <>
-            <canvas 
-              ref={canvasRef} 
-              className="w-full h-full object-contain pointer-events-none" 
-            />
-            
-            {/* FPS Counter */}
+            <canvas ref={canvasRef} className="w-full h-full object-contain pointer-events-none" />
+
+            {/* FPS */}
             <div className="absolute top-4 left-4 font-mono text-xs opacity-50 px-2 py-1 bg-black/50 rounded backdrop-blur-sm border border-white/10">
               {fps} FPS
             </div>
-            
-            {/* Pose Status Overlay */}
+
+            {/* Category badge */}
+            {garmentCategory && (
+              <div className="absolute top-4 right-4 text-[9px] tracking-widest px-2 py-1 bg-black/60 border border-white/10 rounded backdrop-blur-sm text-muted-foreground">
+                {garmentCategory === 'glasses' ? 'EYEWEAR' : 'TOPS'}
+              </div>
+            )}
+
+            {/* Pose status */}
             <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none">
               <div className="px-4 py-2 bg-black/80 backdrop-blur-md text-xs tracking-[0.2em] rounded-full border border-white/10 text-primary uppercase shadow-xl flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 {poseStatus}
               </div>
             </div>
-            
-            {/* Capture Button */}
+
+            {/* Capture */}
             <div className="absolute bottom-8 left-0 right-0 flex justify-center">
-              <Button 
+              <Button
                 onClick={handleCapture}
                 size="lg"
                 className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold tracking-widest px-8 rounded-full shadow-2xl transition-all active:scale-95"
@@ -102,9 +164,8 @@ export default function TryOn() {
         )}
       </div>
 
-      {/* RIGHT SIDE - CATALOG & CONTROLS (40%) */}
+      {/* ── RIGHT — catalog & controls (40%) ──────────────────────────────── */}
       <div className="w-full lg:w-[40%] flex flex-col h-[40vh] lg:h-screen bg-sidebar">
-        
         {/* Header */}
         <header className="p-6 border-b border-border flex items-center justify-between shrink-0">
           <div>
@@ -113,30 +174,41 @@ export default function TryOn() {
           </div>
         </header>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-          
-          {/* Controls */}
-          <div className="space-y-4">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+
+          {/* ── Opacity slider ───────────────────────────────────────────── */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="flex items-center gap-2">
                 <Settings className="w-4 h-4" /> Garment Opacity
               </span>
               <span>{opacity}%</span>
             </div>
-            <Slider 
-              value={[opacity]} 
-              min={0} 
-              max={100} 
-              step={1} 
-              onValueChange={(val) => setOpacity(val[0])}
+            <Slider value={[opacity]} min={0} max={100} step={1} onValueChange={([v]) => setOpacity(v)} className="w-full" />
+          </div>
+
+          {/* ── Scale slider (Ali-Kalsekar +/- keys) ─────────────────────── */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <Settings className="w-4 h-4" /> Garment Size
+              </span>
+              <span>{scaleFactor.toFixed(2)}×</span>
+            </div>
+            <Slider
+              value={[scaleFactor]}
+              min={0.5}
+              max={1.5}
+              step={0.01}
+              onValueChange={([v]) => setScaleFactor(v)}
               className="w-full"
             />
           </div>
 
           <div className="w-full h-px bg-border" />
 
-          {/* Debug Panel */}
+          {/* ── Debug panel ──────────────────────────────────────────────── */}
           <div className="space-y-3">
             <button
               onClick={() => setDebugOpen(v => !v)}
@@ -151,9 +223,9 @@ export default function TryOn() {
               <div className="space-y-2 pl-6 border-l border-border">
                 {(
                   [
-                    { label: 'Torso Points',   val: showTorsoPoints,  set: setShowTorsoPoints  },
-                    { label: 'Torso Polygon',  val: showTorsoPolygon, set: setShowTorsoPolygon },
-                    { label: 'Garment Box',    val: showWarpBox,      set: setShowWarpBox      },
+                    { label: 'Torso Points',  val: showTorsoPoints,  set: setShowTorsoPoints  },
+                    { label: 'Torso Polygon', val: showTorsoPolygon, set: setShowTorsoPolygon },
+                    { label: 'Garment Box',   val: showWarpBox,      set: setShowWarpBox      },
                   ] as const
                 ).map(({ label, val, set }) => (
                   <button
@@ -161,9 +233,7 @@ export default function TryOn() {
                     onClick={() => set(v => !v)}
                     className={cn(
                       'flex items-center gap-2 w-full text-left text-[10px] tracking-widest px-3 py-2 rounded transition-colors',
-                      val
-                        ? 'bg-primary/20 text-primary'
-                        : 'text-muted-foreground hover:text-white hover:bg-white/5',
+                      val ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-white hover:bg-white/5',
                     )}
                   >
                     <span className={cn('w-2 h-2 rounded-full flex-none', val ? 'bg-primary' : 'bg-muted-foreground/40')} />
@@ -177,59 +247,32 @@ export default function TryOn() {
 
           <div className="w-full h-px bg-border" />
 
-          {/* Catalog */}
+          {/* ── Tops catalog ─────────────────────────────────────────────── */}
           <div>
-            <h2 className="text-sm font-semibold tracking-widest mb-6 flex items-center gap-2">
-              Collection
+            <h2 className="text-sm font-semibold tracking-widest mb-4 flex items-center gap-2">
+              Tops
               <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                {GARMENTS.length} Items
+                {TOPS.length}
               </span>
             </h2>
-            
             <div className="grid grid-cols-2 gap-4">
-              {GARMENTS.map((garment) => {
-                const isSelected = selectedGarment === garment.src;
-                
-                return (
-                  <button
-                    key={garment.id}
-                    onClick={() => setSelectedGarment(garment.src)}
-                    className={cn(
-                      "group relative flex flex-col text-left transition-all duration-300 outline-none rounded-md overflow-hidden bg-card border-2",
-                      isSelected 
-                        ? "border-primary shadow-[0_0_20px_rgba(212,175,55,0.15)] scale-[1.02]" 
-                        : "border-transparent hover:border-border"
-                    )}
-                  >
-                    <div className="aspect-[4/5] bg-black/50 w-full relative p-4 flex items-center justify-center overflow-hidden">
-                      {isSelected && (
-                        <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg">
-                          <Check className="w-4 h-4 text-primary-foreground" />
-                        </div>
-                      )}
-                      
-                      {/* Decorative backdrop for images */}
-                      <div className="absolute inset-0 bg-gradient-to-tr from-black/80 via-transparent to-white/5 opacity-50" />
-                      
-                      <img 
-                        src={garment.src} 
-                        alt={garment.name}
-                        className={cn(
-                          "w-full h-full object-contain relative z-0 transition-transform duration-500",
-                          isSelected ? "scale-110" : "group-hover:scale-110"
-                        )}
-                        crossOrigin="anonymous"
-                      />
-                    </div>
-                    
-                    <div className="p-3 border-t border-border/50 bg-card/80 backdrop-blur-sm">
-                      <p className="text-[10px] font-medium tracking-widest text-white truncate w-full">
-                        {garment.name}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+              {TOPS.map(g => <GarmentCard key={g.id} garment={g} isSelected={selectedGarment === g.src} onSelect={handleSelect} />)}
+            </div>
+          </div>
+
+          <div className="w-full h-px bg-border" />
+
+          {/* ── Eyewear catalog (Ali-Kalsekar) ────────────────────────────── */}
+          <div>
+            <h2 className="text-sm font-semibold tracking-widest mb-4 flex items-center gap-2">
+              <Glasses className="w-4 h-4" />
+              Eyewear
+              <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                {EYEWEAR.length}
+              </span>
+            </h2>
+            <div className="grid grid-cols-3 gap-3">
+              {EYEWEAR.map(g => <GarmentCard key={g.id} garment={g} isSelected={selectedGarment === g.src} onSelect={handleSelect} />)}
             </div>
           </div>
 
