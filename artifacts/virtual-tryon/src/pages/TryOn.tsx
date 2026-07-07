@@ -1,4 +1,5 @@
-import { Camera, Check, Settings, Download, CameraOff } from 'lucide-react';
+import { useState } from 'react';
+import { Camera, Check, Settings, CameraOff, Bug } from 'lucide-react';
 import { useTryOn } from '@/hooks/useTryOn';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ const GARMENTS = [
 
 export default function TryOn() {
   const { toast } = useToast();
+  const [debugOpen, setDebugOpen] = useState(false);
   const {
     videoRef,
     canvasRef,
@@ -26,7 +28,10 @@ export default function TryOn() {
     poseStatus,
     fps,
     webcamError,
-    captureLook
+    captureLook,
+    showTorsoPoints,  setShowTorsoPoints,
+    showTorsoPolygon, setShowTorsoPolygon,
+    showWarpBox,      setShowWarpBox,
   } = useTryOn();
 
   const handleCapture = () => {
@@ -127,6 +132,47 @@ export default function TryOn() {
               onValueChange={(val) => setOpacity(val[0])}
               className="w-full"
             />
+          </div>
+
+          <div className="w-full h-px bg-border" />
+
+          {/* Debug Panel */}
+          <div className="space-y-3">
+            <button
+              onClick={() => setDebugOpen(v => !v)}
+              className="flex items-center gap-2 text-xs text-muted-foreground hover:text-white transition-colors w-full"
+            >
+              <Bug className="w-4 h-4" />
+              <span className="tracking-widest">Debug Overlays</span>
+              <span className="ml-auto text-[10px] opacity-50">{debugOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {debugOpen && (
+              <div className="space-y-2 pl-6 border-l border-border">
+                {(
+                  [
+                    { label: 'Torso Points',   val: showTorsoPoints,  set: setShowTorsoPoints  },
+                    { label: 'Torso Polygon',  val: showTorsoPolygon, set: setShowTorsoPolygon },
+                    { label: 'Garment Box',    val: showWarpBox,      set: setShowWarpBox      },
+                  ] as const
+                ).map(({ label, val, set }) => (
+                  <button
+                    key={label}
+                    onClick={() => set(v => !v)}
+                    className={cn(
+                      'flex items-center gap-2 w-full text-left text-[10px] tracking-widest px-3 py-2 rounded transition-colors',
+                      val
+                        ? 'bg-primary/20 text-primary'
+                        : 'text-muted-foreground hover:text-white hover:bg-white/5',
+                    )}
+                  >
+                    <span className={cn('w-2 h-2 rounded-full flex-none', val ? 'bg-primary' : 'bg-muted-foreground/40')} />
+                    {label}
+                    <span className="ml-auto opacity-60">{val ? 'ON' : 'OFF'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="w-full h-px bg-border" />

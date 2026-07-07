@@ -1,0 +1,62 @@
+I want to integrate and improve my current project using this repository as reference:
+
+https://github.com/Ali-Kalsekar/AI-Powered-Virtual-Try-On-System
+
+My current project already has Phase 1 torso detection working. The webcam shows:
+- TL = left shoulder
+- TR = right shoulder
+- BL = left hip
+- BR = right hip
+- Torso polygon is visible and tracking the body
+
+Do not restart the whole project.
+Do not replace my current UI.
+Do not add VITON-HD, YOLO, torchvision, or photo-based models.
+
+Goal:
+Use the Ali-Kalsekar repository only to improve the real-time garment overlay logic.
+
+Current state:
+Phase 1 torso detection is working.
+Now implement Phase 2 and Phase 3.
+
+Phase 2 — Correct garment placement:
+1. Load selected transparent garment PNG.
+2. Crop transparent borders using PIL getbbox().
+3. Make sure the garment is upright.
+4. Use source points in this exact order:
+   top-left, top-right, bottom-left, bottom-right.
+5. Use destination points from torso polygon in this exact order:
+   TL left shoulder, TR right shoulder, BL left hip, BR right hip.
+6. Apply cv2.getPerspectiveTransform(src, dst).
+7. Apply cv2.warpPerspective().
+8. Garment must appear inside the green torso polygon only.
+9. Garment must not attach to face or background.
+10. Garment must not rotate upside down.
+
+Phase 3 — Realistic live overlay:
+1. Blur alpha channel using GaussianBlur kernel 11.
+2. Use soft alpha blending, not hard paste.
+3. Add opacity slider, default 75%.
+4. Add light shadow under garment region.
+5. Add landmark smoothing using last 5 frames.
+6. Add arm mask using shoulders, elbows, and wrists so arms appear in front of clothing.
+7. Hide garment if shoulder or hip visibility is less than 0.6.
+8. Show message: “Move back for full body view” if torso is not fully visible.
+9. Prevent garment from becoming huge when user moves close to camera.
+10. Keep real-time FPS smooth.
+
+Important:
+Before rendering the garment, keep a debug toggle:
+- show/hide torso points
+- show/hide torso polygon
+- show/hide garment warp box
+
+Fix the overlay step-by-step:
+First verify torso polygon.
+Then verify garment bounding box.
+Then apply the garment.
+Then add blending and arm masking.
+
+Generate the required code changes for my existing Flask + OpenCV + MediaPipe project.
+Keep my current app structure and frontend.
