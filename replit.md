@@ -1,45 +1,51 @@
-# [Project name]
+# Virtual Try-On
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An AI-powered real-time virtual dress try-on application. Uses MediaPipe Pose for body tracking in the browser and overlays garments on a live webcam feed.
 
-## Run & Operate
+## Architecture
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+PNPM monorepo with three main packages:
 
-## Stack
+| Package | Path | Purpose |
+|---|---|---|
+| `@workspace/virtual-tryon` | `artifacts/virtual-tryon/` | React + Vite frontend with MediaPipe |
+| `@workspace/api-server` | `artifacts/api-server/` | Node/Express REST API |
+| `@workspace/db` | `lib/db/` | Drizzle ORM schema + migrations |
+| `@workspace/api-spec` | `lib/api-spec/` | OpenAPI spec + Orval codegen |
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+## Running the project
 
-## Where things live
+Two workflows are configured in Replit:
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- **Virtual Try-On** — Vite dev server on port 5173 (`BASE_PATH=/`)
+- **API Server** — Express server on port 8080 (`/api`)
 
-## Architecture decisions
+Start both from the Replit workflow panel, or use the Run button.
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+## Development commands
 
-## Product
+```bash
+# Install dependencies
+pnpm install
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+# Push DB schema changes
+pnpm --filter @workspace/db run push
 
-## User preferences
+# Regenerate API hooks from OpenAPI spec
+pnpm --filter @workspace/api-spec run codegen
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+# Build API server
+pnpm --filter @workspace/api-server run build
+```
 
-## Gotchas
+## Environment
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- `DATABASE_URL` — managed by Replit (PostgreSQL, pre-provisioned)
+- `SESSION_SECRET` — stored as a Replit secret
 
-## Pointers
+## Tech stack
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- **Frontend**: React 19, Vite 7, Tailwind CSS 4, Framer Motion, Radix UI, MediaPipe Pose
+- **Backend**: Node.js 24, Express 5, Pino logging, Esbuild
+- **Database**: PostgreSQL 16 via Drizzle ORM
+- **Codegen**: Orval (OpenAPI → React Query hooks + Zod schemas)
